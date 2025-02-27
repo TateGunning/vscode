@@ -292,10 +292,10 @@ class TerminalTabsRenderer extends Disposable implements IListRenderer<ITerminal
 		const actionsContainer = DOM.append(label.element, $('.actions'));
 
 		const actionBar = this._register(new ActionBar(actionsContainer, {
-			actionRunner: new TerminalContextActionRunner(),
+			actionRunner: this._register(new TerminalContextActionRunner()),
 			actionViewItemProvider: (action, options) =>
 				action instanceof MenuItemAction
-					? this._instantiationService.createInstance(MenuEntryActionViewItem, action, { hoverDelegate: options.hoverDelegate })
+					? this._register(this._instantiationService.createInstance(MenuEntryActionViewItem, action, { hoverDelegate: options.hoverDelegate }))
 					: undefined
 		}));
 
@@ -503,9 +503,6 @@ class TerminalTabsRenderer extends Disposable implements IListRenderer<ITerminal
 					this._terminalService.createTerminal({ location: { parentTerminal: e } });
 				});
 			})),
-			this._register(new Action(TerminalCommandId.KillActiveTab, terminalStrings.kill.short, ThemeIcon.asClassName(Codicon.trashcan), true, async () => {
-				this._runForSelectionOrInstance(instance, e => this._terminalService.safeDisposeTerminal(e));
-			}))
 		];
 		if (instance.shellLaunchConfig.tabActions) {
 			for (const action of instance.shellLaunchConfig.tabActions) {
@@ -514,6 +511,9 @@ class TerminalTabsRenderer extends Disposable implements IListRenderer<ITerminal
 				})));
 			}
 		}
+		actions.push(this._register(new Action(TerminalCommandId.KillActiveTab, terminalStrings.kill.short, ThemeIcon.asClassName(Codicon.trashcan), true, async () => {
+			this._runForSelectionOrInstance(instance, e => this._terminalService.safeDisposeTerminal(e));
+		})));
 		// TODO: Cache these in a way that will use the correct instance
 		template.actionBar.clear();
 		for (const action of actions) {

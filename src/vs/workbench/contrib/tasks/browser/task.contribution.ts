@@ -142,7 +142,7 @@ export class TaskStatusBarContributions extends Disposable implements IWorkbench
 			};
 
 			if (!this._runningTasksStatusItem) {
-				this._runningTasksStatusItem = this._statusbarService.addEntry(itemProps, 'status.runningTasks', StatusbarAlignment.LEFT, 49 /* Medium Priority, next to Markers */);
+				this._runningTasksStatusItem = this._statusbarService.addEntry(itemProps, 'status.runningTasks', StatusbarAlignment.LEFT, { location: { id: 'status.problems', priority: 50 }, alignment: StatusbarAlignment.RIGHT });
 			} else {
 				this._runningTasksStatusItem.update(itemProps);
 			}
@@ -566,7 +566,7 @@ configurationRegistry.registerConfiguration({
 	}
 });
 
-export const rerunTaskIcon = registerIcon('rerun-task', Codicon.rerunTask, nls.localize('rerunTaskIcon', 'View icon of the rerun task.'));
+export const rerunTaskIcon = registerIcon('rerun-task', Codicon.refresh, nls.localize('rerunTaskIcon', 'View icon of the rerun task.'));
 export const RerunForActiveTerminalCommandId = 'workbench.action.tasks.rerunForActiveTerminal';
 registerAction2(class extends Action2 {
 	constructor() {
