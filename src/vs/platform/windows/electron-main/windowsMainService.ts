@@ -20,7 +20,7 @@ import { getMarks, mark } from '../../../base/common/performance.js';
 import { IProcessEnvironment, isMacintosh, isWindows, OS } from '../../../base/common/platform.js';
 import { cwd } from '../../../base/common/process.js';
 import { extUriBiasedIgnorePathCase, isEqualAuthority, normalizePath, originalFSPath, removeTrailingPathSeparator } from '../../../base/common/resources.js';
-import { assertIsDefined } from '../../../base/common/types.js';
+import { assertReturnsDefined } from '../../../base/common/types.js';
 import { URI } from '../../../base/common/uri.js';
 import { getNLSLanguage, getNLSMessages, localize } from '../../../nls.js';
 import { IBackupMainService } from '../../backup/electron-main/backup.js';
@@ -37,7 +37,7 @@ import product from '../../product/common/product.js';
 import { IProtocolMainService } from '../../protocol/electron-main/protocol.js';
 import { getRemoteAuthority } from '../../remote/common/remoteHosts.js';
 import { IStateService } from '../../state/node/state.js';
-import { IAddRemoveFoldersRequest, INativeOpenFileRequest, INativeWindowConfiguration, IOpenEmptyWindowOptions, IPath, IPathsToWaitFor, isFileToOpen, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable, IWindowSettings, titlebarStyleDefaultOverride } from '../../window/common/window.js';
+import { IAddRemoveFoldersRequest, INativeOpenFileRequest, INativeWindowConfiguration, IOpenEmptyWindowOptions, IPath, IPathsToWaitFor, isFileToOpen, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable, IWindowSettings } from '../../window/common/window.js';
 import { CodeWindow } from './windowImpl.js';
 import { IOpenConfiguration, IOpenEmptyConfiguration, IWindowsCountChangedEvent, IWindowsMainService, OpenContext, getLastFocused } from './windows.js';
 import { findWindowOnExtensionDevelopmentPath, findWindowOnFile, findWindowOnWorkspaceOrFolder } from './windowsFinder.js';
@@ -210,7 +210,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 	private readonly windows = new Map<number, ICodeWindow>();
 
-	private readonly windowsStateHandler = this._register(new WindowsStateHandler(this, this.stateService, this.lifecycleMainService, this.logService, this.configurationService));
+	private readonly windowsStateHandler: WindowsStateHandler;
 
 	constructor(
 		private readonly machineId: string,
@@ -219,7 +219,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		private readonly initialUserEnv: IProcessEnvironment,
 		@ILogService private readonly logService: ILogService,
 		@ILoggerMainService private readonly loggerService: ILoggerMainService,
-		@IStateService private readonly stateService: IStateService,
+		@IStateService stateService: IStateService,
 		@IPolicyService private readonly policyService: IPolicyService,
 		@IEnvironmentMainService private readonly environmentMainService: IEnvironmentMainService,
 		@IUserDataProfilesMainService private readonly userDataProfilesMainService: IUserDataProfilesMainService,
@@ -237,6 +237,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		@ICSSDevelopmentService private readonly cssDevelopmentService: ICSSDevelopmentService
 	) {
 		super();
+
+		this.windowsStateHandler = this._register(new WindowsStateHandler(this, stateService, this.lifecycleMainService, this.logService, this.configurationService));
 
 		this.registerListeners();
 	}
@@ -1506,7 +1508,6 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 			autoDetectHighContrast: windowConfig?.autoDetectHighContrast ?? true,
 			autoDetectColorScheme: windowConfig?.autoDetectColorScheme ?? false,
-			overrideDefaultTitlebarStyle: titlebarStyleDefaultOverride,
 			accessibilitySupport: app.accessibilitySupportEnabled,
 			colorScheme: this.themeMainService.getColorScheme(),
 			policiesData: this.policyService.serialize(),
@@ -1554,7 +1555,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			disposables.add(createdWindow.onDidLeaveFullScreen(() => this._onDidChangeFullScreen.fire({ window: createdWindow, fullscreen: false })));
 			disposables.add(createdWindow.onDidTriggerSystemContextMenu(({ x, y }) => this._onDidTriggerSystemContextMenu.fire({ window: createdWindow, x, y })));
 
-			const webContents = assertIsDefined(createdWindow.win?.webContents);
+			const webContents = assertReturnsDefined(createdWindow.win?.webContents);
 			webContents.removeAllListeners('devtools-reload-page'); // remove built in listener so we can handle this on our own
 			disposables.add(Event.fromNodeEventEmitter(webContents, 'devtools-reload-page')(() => this.lifecycleMainService.reload(createdWindow)));
 
@@ -1579,6 +1580,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 				configuration.extensionEnvironment = currentWindowConfig.extensionEnvironment;
 				configuration['extensions-dir'] = currentWindowConfig['extensions-dir'];
 				configuration['disable-extensions'] = currentWindowConfig['disable-extensions'];
+				configuration['disable-extension'] = currentWindowConfig['disable-extension'];
 			}
 			configuration.loggers = configuration.loggers;
 		}

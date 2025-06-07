@@ -14,8 +14,9 @@ import { isRemoteDiagnosticError } from '../../../../platform/diagnostics/common
 import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { INativeHostService } from '../../../../platform/native/common/native.js';
-import { IProcessMainService } from '../../../../platform/process/common/process.js';
+import { IProcessService } from '../../../../platform/process/common/process.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
+import { IUpdateService, StateType } from '../../../../platform/update/common/update.js';
 import { applyZoom } from '../../../../platform/window/electron-sandbox/window.js';
 import { BaseIssueReporterService } from '../browser/baseIssueReporterService.js';
 import { IssueReporterData as IssueReporterModelData } from '../browser/issueReporterModel.js';
@@ -31,7 +32,7 @@ const MAX_GITHUB_API_LENGTH = 65500;
 
 
 export class IssueReporter extends BaseIssueReporterService {
-	private readonly processMainService: IProcessMainService;
+	private readonly processService: IProcessService;
 	constructor(
 		disableExtensions: boolean,
 		data: IssueReporterData,
@@ -44,14 +45,15 @@ export class IssueReporter extends BaseIssueReporterService {
 		window: Window,
 		@INativeHostService private readonly nativeHostService: INativeHostService,
 		@IIssueFormService issueFormService: IIssueFormService,
-		@IProcessMainService processMainService: IProcessMainService,
+		@IProcessService processService: IProcessService,
 		@IThemeService themeService: IThemeService,
 		@IFileService fileService: IFileService,
-		@IFileDialogService fileDialogService: IFileDialogService
+		@IFileDialogService fileDialogService: IFileDialogService,
+		@IUpdateService private readonly updateService: IUpdateService
 	) {
 		super(disableExtensions, data, os, product, window, false, issueFormService, themeService, fileService, fileDialogService);
-		this.processMainService = processMainService;
-		this.processMainService.$getSystemInfo().then(info => {
+		this.processService = processService;
+		this.processService.getSystemInfo().then(info => {
 			this.issueReporterModel.update({ systemInfo: info });
 			this.receivedSystemInfo = true;
 
@@ -59,16 +61,31 @@ export class IssueReporter extends BaseIssueReporterService {
 			this.updatePreviewButtonState();
 		});
 		if (this.data.issueType === IssueType.PerformanceIssue) {
-			this.processMainService.$getPerformanceInfo().then(info => {
+			this.processService.getPerformanceInfo().then(info => {
 				this.updatePerformanceInfo(info as Partial<IssueReporterData>);
 			});
 		}
 
+		this.checkForUpdates();
 		this.setEventHandlers();
 		applyZoom(this.data.zoomLevel, this.window);
 		this.updateExperimentsInfo(this.data.experiments);
 		this.updateRestrictedMode(this.data.restrictedMode);
 		this.updateUnsupportedMode(this.data.isUnsupported);
+	}
+
+	private async checkForUpdates(): Promise<void> {
+		const updateState = this.updateService.state;
+		if (updateState.type === StateType.Ready || updateState.type === StateType.Downloaded) {
+			this.needsUpdate = true;
+			const includeAcknowledgement = this.getElementById('version-acknowledgements');
+			const updateBanner = this.getElementById('update-banner');
+			if (updateBanner && includeAcknowledgement) {
+				includeAcknowledgement.classList.remove('hidden');
+				updateBanner.classList.remove('hidden');
+				updateBanner.textContent = localize('updateAvailable', "A new version of {0} is available.", this.product.nameLong);
+			}
+		}
 	}
 
 	public override setEventHandlers(): void {
@@ -78,7 +95,7 @@ export class IssueReporter extends BaseIssueReporterService {
 			const issueType = parseInt((<HTMLInputElement>event.target).value);
 			this.issueReporterModel.update({ issueType: issueType });
 			if (issueType === IssueType.PerformanceIssue && !this.receivedPerformanceInfo) {
-				this.processMainService.$getPerformanceInfo().then(info => {
+				this.processService.getPerformanceInfo().then(info => {
 					this.updatePerformanceInfo(info as Partial<IssueReporterData>);
 				});
 			}
@@ -211,6 +228,8 @@ export class IssueReporter extends BaseIssueReporterService {
 		const baseUrl = this.getIssueUrlWithTitle((<HTMLInputElement>this.getElementById('issue-title')).value, issueUrl);
 		let url = baseUrl + `&body=${encodeURIComponent(issueBody)}`;
 
+		url += this.addTemplateToUrl(gitHubDetails?.owner, gitHubDetails?.repositoryName);
+
 		if (this.data.githubAccessToken && gitHubDetails) {
 			if (await this.submitToGitHub(issueTitle, issueBody, gitHubDetails)) {
 				return true;
@@ -219,7 +238,7 @@ export class IssueReporter extends BaseIssueReporterService {
 
 		try {
 			if (url.length > MAX_URL_LENGTH || issueBody.length > MAX_GITHUB_API_LENGTH) {
-				url = await this.writeToClipboard(baseUrl, issueBody);
+				url = await this.writeToClipboard(baseUrl, issueBody) + this.addTemplateToUrl(gitHubDetails?.owner, gitHubDetails?.repositoryName);
 			}
 		} catch (_) {
 			console.error('Writing to clipboard failed');

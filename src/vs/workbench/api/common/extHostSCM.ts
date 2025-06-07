@@ -414,11 +414,9 @@ class ExtHostSourceControlResourceGroup implements vscode.SourceControlResourceG
 
 	private _contextValue: string | undefined = undefined;
 	get contextValue(): string | undefined {
-		checkProposedApiEnabled(this._extension, 'scmResourceGroupState');
 		return this._contextValue;
 	}
 	set contextValue(contextValue: string | undefined) {
-		checkProposedApiEnabled(this._extension, 'scmResourceGroupState');
 		this._contextValue = contextValue;
 		this._proxy.$updateGroup(this._sourceControlHandle, this.handle, this.features);
 	}
@@ -431,12 +429,8 @@ class ExtHostSourceControlResourceGroup implements vscode.SourceControlResourceG
 	}
 
 	get features(): SCMGroupFeatures {
-		const contextValue = isProposedApiEnabled(this._extension, 'scmResourceGroupState')
-			? this.contextValue
-			: undefined;
-
 		return {
-			contextValue,
+			contextValue: this.contextValue,
 			hideWhenEmpty: this.hideWhenEmpty
 		};
 	}
@@ -595,6 +589,21 @@ class ExtHostSourceControl implements vscode.SourceControl {
 			quickDiffLabel = quickDiffProvider?.label;
 		}
 		this.#proxy.$updateSourceControl(this.handle, { hasQuickDiffProvider: !!quickDiffProvider, quickDiffLabel });
+	}
+
+	private _secondaryQuickDiffProvider: vscode.QuickDiffProvider | undefined = undefined;
+
+	get secondaryQuickDiffProvider(): vscode.QuickDiffProvider | undefined {
+		checkProposedApiEnabled(this._extension, 'quickDiffProvider');
+		return this._secondaryQuickDiffProvider;
+	}
+
+	set secondaryQuickDiffProvider(secondaryQuickDiffProvider: vscode.QuickDiffProvider | undefined) {
+		checkProposedApiEnabled(this._extension, 'quickDiffProvider');
+
+		this._secondaryQuickDiffProvider = secondaryQuickDiffProvider;
+		const secondaryQuickDiffLabel = secondaryQuickDiffProvider?.label;
+		this.#proxy.$updateSourceControl(this.handle, { hasSecondaryQuickDiffProvider: !!secondaryQuickDiffProvider, secondaryQuickDiffLabel });
 	}
 
 	private _historyProvider: vscode.SourceControlHistoryProvider | undefined;
@@ -950,6 +959,20 @@ export class ExtHostSCM implements ExtHostSCMShape {
 			.then<UriComponents | null>(r => r || null);
 	}
 
+	$provideSecondaryOriginalResource(sourceControlHandle: number, uriComponents: UriComponents, token: CancellationToken): Promise<UriComponents | null> {
+		const uri = URI.revive(uriComponents);
+		this.logService.trace('ExtHostSCM#$provideSecondaryOriginalResource', sourceControlHandle, uri.toString());
+
+		const sourceControl = this._sourceControls.get(sourceControlHandle);
+
+		if (!sourceControl || !sourceControl.secondaryQuickDiffProvider || !sourceControl.secondaryQuickDiffProvider.provideOriginalResource) {
+			return Promise.resolve(null);
+		}
+
+		return asPromise(() => sourceControl.secondaryQuickDiffProvider!.provideOriginalResource!(uri, token))
+			.then<UriComponents | null>(r => r || null);
+	}
+
 	$onInputBoxValueChange(sourceControlHandle: number, value: string): Promise<void> {
 		this.logService.trace('ExtHostSCM#$onInputBoxValueChange', sourceControlHandle);
 
@@ -1021,6 +1044,19 @@ export class ExtHostSCM implements ExtHostSCMShape {
 
 		this._selectedSourceControlHandle = selectedSourceControlHandle;
 		return Promise.resolve(undefined);
+	}
+
+	async $resolveHistoryItemChatContext(sourceControlHandle: number, historyItemId: string, token: CancellationToken): Promise<string | undefined> {
+		try {
+			const historyProvider = this._sourceControls.get(sourceControlHandle)?.historyProvider;
+			const chatContext = await historyProvider?.resolveHistoryItemChatContext(historyItemId, token);
+
+			return chatContext ?? undefined;
+		}
+		catch (err) {
+			this.logService.error('ExtHostSCM#$resolveHistoryItemChatContext', err);
+			return undefined;
+		}
 	}
 
 	async $resolveHistoryItemRefsCommonAncestor(sourceControlHandle: number, historyItemRefs: string[], token: CancellationToken): Promise<string | undefined> {
